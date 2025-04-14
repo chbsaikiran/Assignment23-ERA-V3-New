@@ -1,0 +1,9 @@
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+tqdm>=4.65.0
+numpy>=1.24.0
+sentencepiece>=0.1.99
+pillow>=10.0.0  # Required for image processing
+accelerate>=0.20.0  # Required for faster model loading
+protobuf>=3.20.0  # Required for SentencePiece 
