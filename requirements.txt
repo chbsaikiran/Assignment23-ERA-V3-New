@@ -6,4 +6,6 @@ numpy>=1.24.0
 sentencepiece>=0.1.99
 pillow>=10.0.0  # Required for image processing
 accelerate>=0.20.0  # Required for faster model loading
-protobuf>=3.20.0  # Required for SentencePiece 
+protobuf>=3.20.0  # Required for SentencePiece
+peft>=0.4.0
+bitsandbytes>=0.40.0
