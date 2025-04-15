@@ -32,6 +32,9 @@ class QADataset(Dataset):
         self.num_images = num_images
         self.max_length = max_length
         
+        # Set device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         # Initialize models and processors
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2")
         if self.tokenizer.pad_token is None:
@@ -48,15 +51,15 @@ class QADataset(Dataset):
         self.dataset = torch.utils.data.Subset(self.dataset, range(num_images))
         
         # Load models
-        self.siglip_model = AutoModel.from_pretrained("google/siglip-so400m-patch14-384").cuda()
+        self.siglip_model = AutoModel.from_pretrained("google/siglip-so400m-patch14-384").to(self.device)
         self.siglip_model.eval()
         
         # Load the projection layer
         self.projection_layer = LinearProjection(
             input_dim=1152,  # SigLIP hidden size
             output_dim=2560  # Phi-2's embedding size
-        ).cuda()
-        self.projection_layer.load_state_dict(torch.load('trained_projection_layer.pth'))
+        ).to(self.device)
+        self.projection_layer.load_state_dict(torch.load('trained_projection_layer.pth', map_location=self.device))
         self.projection_layer.eval()
         
     def __len__(self):
@@ -72,7 +75,7 @@ class QADataset(Dataset):
         
         # Get image embeddings from SigLIP
         with torch.no_grad():
-            inputs = self.image_processor(images=image, return_tensors="pt").to('cuda')
+            inputs = self.image_processor(images=image, return_tensors="pt").to(self.device)
             vision_outputs = self.siglip_model.vision_model(pixel_values=inputs.pixel_values)
             siglip_embeddings = vision_outputs.pooler_output
             projected_embeddings = self.projection_layer(siglip_embeddings)
@@ -259,9 +262,9 @@ def create_qlora_model():
     
     # Configure LoRA
     lora_config = LoraConfig(
-        r=16,
+        r=64,
         lora_alpha=32,
-        target_modules=["query_key_value", "image_proj"],
+        target_modules=["query_key_value","dense","dense_h_to_4h","dense_4h_to_h",],
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM"
@@ -354,7 +357,7 @@ def inference(image, question, model_path="./phi2_qlora_final", is_path=False):
         input_dim=1152,  # SigLIP hidden size
         output_dim=2560  # Phi-2's embedding size
     ).to(device)
-    projection_layer.load_state_dict(torch.load('trained_projection_layer.pth'))
+    projection_layer.load_state_dict(torch.load('trained_projection_layer.pth', map_location=device))
     projection_layer.eval()
     
     # Get image embeddings from SigLIP
@@ -371,11 +374,11 @@ def inference(image, question, model_path="./phi2_qlora_final", is_path=False):
         trust_remote_code=True
     ).to(device)
     base_model.generation_config = GenerationConfig.from_pretrained("microsoft/phi-2")
-    base_model.generation_config.max_new_tokens = 100
-    base_model.generation_config.min_new_tokens = 10
-    base_model.generation_config.num_beams = 5
-    base_model.generation_config.temperature = 0.7
-    base_model.generation_config.do_sample = True
+    base_model.generation_config.max_new_tokens = 50  # Shorter responses
+    base_model.generation_config.min_new_tokens = 5   # Ensure some minimum response
+    base_model.generation_config.num_beams = 5        # More focused beam search
+    base_model.generation_config.temperature = 0.3    # Lower temperature = more focused
+    base_model.generation_config.do_sample = False    # Disable sampling for more deterministic outputs
     base_model.generation_config.top_p = 0.9
     base_model.generation_config.pad_token_id = tokenizer.pad_token_id
     base_model.generation_config.eos_token_id = tokenizer.eos_token_id
